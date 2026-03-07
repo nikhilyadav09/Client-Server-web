@@ -2,6 +2,24 @@ import socket
 import threading
 from datetime import datetime
 
+LOG_FILE = "chat.log"
+
+open(LOG_FILE, "a").close()
+
+def log_event(message):
+    """Write chat events to log file."""
+    with open(LOG_FILE, "a") as f:
+        f.write(message + "\n")
+
+def get_recent_history(limit=20):
+    """Return the last 'limit' lines from the chat log."""
+    try:
+        with open(LOG_FILE, "r") as f:
+            lines = f.readlines()
+            return lines[-limit:]
+    except FileNotFoundError:
+        return []
+    
 HOST = "127.0.0.1"
 PORT = 5000
 
@@ -33,13 +51,28 @@ def handle_client(client_socket, address):
     try:
         username = client_socket.recv(1024).decode()
 
+        # send recent chat history to the newly connected client
+        history = get_recent_history()
+
+        if history:
+            client_socket.send("---- Recent Chat History ----\n".encode())
+            for line in history:
+                client_socket.send(line.encode())
+            client_socket.send("-----------------------------\n".encode())
+
         with lock:
             clients[client_socket] = username
 
         print(f"{username} joined from {address}")
 
         timestamp = datetime.now().strftime("%H:%M:%S")
-        broadcast(f"[{timestamp}] {username} joined the chat")
+        join_msg = f"[{timestamp}] {username} joined the chat"
+
+        print(join_msg)
+
+        broadcast(join_msg)
+
+        log_event(join_msg)
 
         while True:
             data = client_socket.recv(1024)
@@ -59,19 +92,26 @@ def handle_client(client_socket, address):
                 with lock:
                     user_list = ", ".join(clients.values())
 
-                response = f"Online users: {user_list}"
+                timestamp = datetime.now().strftime("%H:%M:%S")
+
+                response = f"[{timestamp}] Online users: {user_list}"
 
                 client_socket.send(response.encode())
+
+                log_event(response)
 
                 continue
 
 
             timestamp = datetime.now().strftime("%H:%M:%S")
+
             full_message = f"[{timestamp}] {username}: {message}"
 
             print(full_message)
 
             broadcast(full_message, client_socket)
+
+            log_event(full_message)
 
     except:
         pass
@@ -85,7 +125,14 @@ def handle_client(client_socket, address):
         print(f"{username} left the chat")
 
         timestamp = datetime.now().strftime("%H:%M:%S")
-        broadcast(f"[{timestamp}] {username} left the chat")
+
+        leave_msg = f"[{timestamp}] {username} left the chat"
+
+        print(leave_msg)
+
+        broadcast(leave_msg)
+
+        log_event(leave_msg)
 
         client_socket.close()
 
