@@ -1,5 +1,6 @@
 import socket
 import threading
+from datetime import datetime
 
 HOST = "127.0.0.1"
 PORT = 5000
@@ -12,27 +13,35 @@ server_socket.listen()
 
 print(f"Server running on {HOST}:{PORT}")
 
-clients = []
+clients = {}
+lock = threading.Lock()
 
 
-def broadcast(message, sender_socket):
-    for client in clients:
-        if client != sender_socket:
-            try:
-                client.send(message)
-            except:
-                client.close()
-                clients.remove(client)
+def broadcast(message, sender_socket=None):
+    with lock:
+        for client in clients:
+            if client != sender_socket:
+                try:
+                    client.send(message.encode())
+                except:
+                    client.close()
+                    clients.pop(client, None)
 
 
 def handle_client(client_socket, address):
 
-    print(f"New connection from {address}")
+    try:
+        username = client_socket.recv(1024).decode()
 
-    clients.append(client_socket)
+        with lock:
+            clients[client_socket] = username
 
-    while True:
-        try:
+        print(f"{username} joined from {address}")
+
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        broadcast(f"[{timestamp}] {username} joined the chat")
+
+        while True:
             data = client_socket.recv(1024)
 
             if not data:
@@ -40,18 +49,45 @@ def handle_client(client_socket, address):
 
             message = data.decode()
 
-            print(f"[{address}] {message}")
+            # client requested quit
+            if message.strip() == "QUIT":
+                break
 
-            broadcast(data, client_socket)
+            # command: /users
+            if message.strip() == "/users":
 
-        except:
-            break
+                with lock:
+                    user_list = ", ".join(clients.values())
 
-    print(f"Client disconnected: {address}")
+                response = f"Online users: {user_list}"
 
-    clients.remove(client_socket)
+                client_socket.send(response.encode())
 
-    client_socket.close()
+                continue
+
+
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            full_message = f"[{timestamp}] {username}: {message}"
+
+            print(full_message)
+
+            broadcast(full_message, client_socket)
+
+    except:
+        pass
+
+    finally:
+
+        with lock:
+            username = clients.get(client_socket, "Unknown")
+            clients.pop(client_socket, None)
+
+        print(f"{username} left the chat")
+
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        broadcast(f"[{timestamp}] {username} left the chat")
+
+        client_socket.close()
 
 
 while True:

@@ -8,6 +8,10 @@ client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 client_socket.connect((HOST, PORT))
 
+username = input("Enter your username: ")
+
+client_socket.send(username.encode())
+
 print("Connected to chat server")
 
 
@@ -22,7 +26,7 @@ def receive_messages():
             print(message)
 
         except:
-            print("Connection closed.")
+            print("Disconnected from server")
             break
 
 
@@ -30,7 +34,8 @@ def send_messages():
     while True:
         message = input()
 
-        if message.lower() == "/quit":
+        if message == "/quit":
+            client_socket.send("QUIT".encode())
             client_socket.close()
             break
 
